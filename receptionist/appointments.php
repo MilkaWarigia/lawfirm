@@ -101,7 +101,50 @@ include 'header.php';
     <div class="alert alert-error"><?php echo htmlspecialchars($error); ?></div>
 <?php endif; ?>
 
-<div class="form-container">
+<div class="card">
+    <h3>All Appointments</h3>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Event ID</th>
+                    <th>Appointment Name</th>
+                    <th>Type</th>
+                    <th>Date & Time</th>
+                    <th>Case</th>
+                    <th>Location</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (count($events) > 0): ?>
+                    <?php foreach ($events as $event): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($event['EventId']); ?></td>
+                            <td><?php echo htmlspecialchars($event['EventName']); ?></td>
+                            <td><?php echo htmlspecialchars($event['EventType']); ?></td>
+                            <td><?php echo date('Y-m-d H:i', strtotime($event['Date'])); ?></td>
+                            <td><?php echo htmlspecialchars($event['CaseName']); ?></td>
+                            <td><?php echo htmlspecialchars($event['Location'] ?? '-'); ?></td>
+                            <td>
+                                <a href="?edit=<?php echo $event['EventId']; ?>" class="btn btn-sm btn-success">Edit</a>
+                                <a href="?delete=<?php echo $event['EventId']; ?>" 
+                                   class="btn btn-sm btn-danger" 
+                                   onclick="return confirm('Are you sure you want to delete this appointment?');">Delete</a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <tr>
+                        <td colspan="7" class="empty-state">No appointments found</td>
+                    </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card mt-20">
     <h3><?php echo $edit_event ? 'Edit Appointment' : 'Schedule New Appointment'; ?></h3>
     <form method="POST" action="">
         <?php if ($edit_event): ?>
@@ -158,49 +201,6 @@ include 'header.php';
             <?php endif; ?>
         </div>
     </form>
-</div>
-
-<div class="card mt-20">
-    <h3>All Appointments</h3>
-    <div class="table-container">
-        <table>
-            <thead>
-                <tr>
-                    <th>Event ID</th>
-                    <th>Appointment Name</th>
-                    <th>Type</th>
-                    <th>Date & Time</th>
-                    <th>Case</th>
-                    <th>Location</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (count($events) > 0): ?>
-                    <?php foreach ($events as $event): ?>
-                        <tr>
-                            <td><?php echo htmlspecialchars($event['EventId']); ?></td>
-                            <td><?php echo htmlspecialchars($event['EventName']); ?></td>
-                            <td><?php echo htmlspecialchars($event['EventType']); ?></td>
-                            <td><?php echo date('Y-m-d H:i', strtotime($event['Date'])); ?></td>
-                            <td><?php echo htmlspecialchars($event['CaseName']); ?></td>
-                            <td><?php echo htmlspecialchars($event['Location'] ?? '-'); ?></td>
-                            <td>
-                                <a href="?edit=<?php echo $event['EventId']; ?>" class="btn btn-sm btn-success">Edit</a>
-                                <a href="?delete=<?php echo $event['EventId']; ?>" 
-                                   class="btn btn-sm btn-danger" 
-                                   onclick="return confirm('Are you sure you want to delete this appointment?');">Delete</a>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <tr>
-                        <td colspan="7" class="empty-state">No appointments found</td>
-                    </tr>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
 </div>
 
 <?php include 'footer.php'; ?>
