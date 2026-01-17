@@ -24,5 +24,5 @@ This file contains the default login credentials for the Law Firm Management Sys
 
 ## Client Account
 - account can be created by client or admin on the portal
-- **Username:** milkah
-- **Password:** milkah123
+- **Username:** `milkah`
+- **Password:** `milkah123`
