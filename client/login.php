@@ -14,10 +14,84 @@ if (isset($_SESSION['client_id'])) {
 
 require_once '../config/database.php';
 
-$error = "";
+// Clear login attempt if user clicks "Back to Login"
+if (isset($_GET['clear']) && $_GET['clear'] == '1') {
+    unset($_SESSION['login_attempt']);
+}
 
-// Process login form
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$error = "";
+$show_security_question = false;
+$security_question = "";
+$login_attempt = $_SESSION['login_attempt'] ?? null;
+
+// Handle security question answer
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['security_answer'])) {
+    $security_answer = trim($_POST['security_answer'] ?? '');
+    $username = $_SESSION['login_attempt']['username'] ?? '';
+    $user_id = $_SESSION['login_attempt']['user_id'] ?? null;
+    
+    if (empty($security_answer)) {
+        $error = "Please enter your security answer";
+        $show_security_question = true;
+        $security_question = $_SESSION['login_attempt']['security_question'] ?? '';
+    } else {
+        try {
+            // Get user's security answer
+            $stmt = $conn->prepare("SELECT SecurityAnswer, FailedAttempts, IsLocked FROM CLIENT_AUTH WHERE AuthId = ?");
+            $stmt->execute([$user_id]);
+            $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$user_data) {
+                $error = "User not found";
+                unset($_SESSION['login_attempt']);
+            } elseif ($user_data['IsLocked']) {
+                $error = "Your account is locked. Please contact the administrator to unlock it.";
+                unset($_SESSION['login_attempt']);
+            } else {
+                // Check if security answer matches (case-insensitive)
+                if (strtolower(trim($user_data['SecurityAnswer'])) === strtolower(trim($security_answer))) {
+                    // Correct answer - reset failed attempts and complete login
+                    $stmt = $conn->prepare("UPDATE CLIENT_AUTH SET FailedAttempts = 0, LastLogin = NOW() WHERE AuthId = ?");
+                    $stmt->execute([$user_id]);
+                    
+                    // Set session variables and redirect
+                    $_SESSION['client_id'] = $_SESSION['login_attempt']['client_id'];
+                    $_SESSION['client_name'] = $_SESSION['login_attempt']['user_name'];
+                    $_SESSION['client_email'] = $_SESSION['login_attempt']['email'] ?? '';
+                    unset($_SESSION['login_attempt']);
+                    header("Location: dashboard.php");
+                    exit();
+                } else {
+                    // Wrong answer - increment failed attempts
+                    $failed_attempts = ($user_data['FailedAttempts'] ?? 0) + 1;
+                    $is_locked = false;
+                    
+                    // Lock account after 3 failed attempts
+                    if ($failed_attempts >= 3) {
+                        $is_locked = true;
+                        $stmt = $conn->prepare("UPDATE CLIENT_AUTH SET FailedAttempts = ?, IsLocked = TRUE, LockedAt = NOW() WHERE AuthId = ?");
+                        $stmt->execute([$failed_attempts, $user_id]);
+                        $error = "Your account has been locked after 3 failed attempts. Please contact the administrator to unlock it.";
+                        unset($_SESSION['login_attempt']);
+                    } else {
+                        $stmt = $conn->prepare("UPDATE CLIENT_AUTH SET FailedAttempts = ? WHERE AuthId = ?");
+                        $stmt->execute([$failed_attempts, $user_id]);
+                        $remaining = 5 - $failed_attempts;
+                        $error = "Incorrect security answer. You have {$remaining} attempt(s) remaining.";
+                        $show_security_question = true;
+                        $security_question = $_SESSION['login_attempt']['security_question'] ?? '';
+                    }
+                }
+            }
+        } catch(PDOException $e) {
+            $error = "Login error: " . $e->getMessage();
+            unset($_SESSION['login_attempt']);
+        }
+    }
+}
+
+// Process initial login form (username/password)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['security_answer'])) {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     
@@ -33,23 +107,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $client_auth = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($client_auth && password_verify($password, $client_auth['Password'])) {
-                // Update last login
-                $stmt = $conn->prepare("UPDATE CLIENT_AUTH SET LastLogin = NOW() WHERE AuthId = ?");
-                $stmt->execute([$client_auth['AuthId']]);
-                
-                // Set session variables
-                $_SESSION['client_id'] = $client_auth['ClientId'];
-                $_SESSION['client_name'] = $client_auth['FirstName'] . ' ' . $client_auth['LastName'];
-                $_SESSION['client_email'] = $client_auth['Email'];
-                
-                header("Location: dashboard.php");
-                exit();
+                // Check if account is locked
+                if (isset($client_auth['IsLocked']) && $client_auth['IsLocked']) {
+                    $error = "Your account is locked. Please contact the administrator to unlock it.";
+                } else {
+                    $security_question_field = (!empty($client_auth['SecurityQuestion']) && $client_auth['SecurityQuestion'] !== null) ? trim($client_auth['SecurityQuestion']) : '';
+                    
+                    if (empty($security_question_field)) {
+                        // Client must have security question set
+                        $error = "Your account does not have a security question set. Please contact the administrator to set up your security question.";
+                    } else {
+                        // Password correct, show security question
+                        // Store login attempt in session and redirect to show security question form
+                        $_SESSION['login_attempt'] = [
+                            'username' => $username,
+                            'user_id' => $client_auth['AuthId'],
+                            'user_name' => $client_auth['FirstName'] . ' ' . $client_auth['LastName'],
+                            'security_question' => $security_question_field,
+                            'email' => $client_auth['Email'] ?? '',
+                            'client_id' => $client_auth['ClientId']
+                        ];
+                        // Redirect to prevent form resubmission and show security question
+                        header("Location: login.php?security_question=1");
+                        exit();
+                    }
+                }
             } else {
                 $error = "Invalid username or password";
             }
         } catch(PDOException $e) {
             $error = "Login error: " . $e->getMessage();
         }
+    }
+}
+
+// Check if we should show security question from session
+if (isset($_SESSION['login_attempt'])) {
+    $show_security_question = true;
+    $security_question = $_SESSION['login_attempt']['security_question'] ?? '';
+    // If security question is empty but we have a login attempt, show error
+    if (empty($security_question)) {
+        $error = "Your account does not have a security question set. Please contact the administrator to set up your security question.";
+        unset($_SESSION['login_attempt']);
+        $show_security_question = false;
     }
 }
 ?>
@@ -360,32 +460,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             <?php endif; ?>
             
-            <form method="POST" action="" class="login-form">
-                <div class="form-group">
-                    <label for="username">
-                        <i class="fas fa-user"></i> Username
-                    </label>
-                    <div class="input-wrapper">
-                        <input type="text" id="username" name="username" required autofocus placeholder="Enter your username">
-                        <i class="fas fa-user input-icon"></i>
+            <?php if ($show_security_question): ?>
+                <form method="POST" action="" class="login-form">
+                    <div class="form-group">
+                        <label style="color: #ffffff; font-weight: 600; margin-bottom: 10px; display: block;">
+                            <i class="fas fa-question-circle"></i> Security Question
+                        </label>
+                        <div style="background: rgba(255, 255, 255, 0.2); padding: 15px; border-radius: 8px; margin-bottom: 20px; color: #ffffff; font-size: 14px;">
+                            <?php echo htmlspecialchars($security_question); ?>
+                        </div>
                     </div>
-                </div>
-                
-                <div class="form-group">
-                    <label for="password">
-                        <i class="fas fa-lock"></i> Password
-                    </label>
-                    <div class="input-wrapper">
-                        <input type="password" id="password" name="password" required placeholder="Enter your password">
-                        <i class="fas fa-lock input-icon"></i>
+                    
+                    <div class="form-group">
+                        <label for="security_answer">
+                            <i class="fas fa-key"></i> Your Answer
+                        </label>
+                        <div class="input-wrapper">
+                            <input type="text" id="security_answer" name="security_answer" required autofocus placeholder="Enter your security answer">
+                            <i class="fas fa-key input-icon"></i>
+                        </div>
                     </div>
-                </div>
-                
-                <button type="submit" class="btn btn-primary btn-login">
-                    <span>Sign In</span>
-                    <i class="fas fa-arrow-right"></i>
-                </button>
-            </form>
+                    
+                    <button type="submit" class="btn btn-primary btn-login">
+                        <span>Verify Answer</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                    
+                    <div style="margin-top: 15px; text-align: center;">
+                        <a href="login.php?clear=1" class="btn btn-secondary btn-sm" style="width: 100%;">
+                            <i class="fas fa-arrow-left"></i> Back to Login
+                        </a>
+                    </div>
+                </form>
+            <?php else: ?>
+                <form method="POST" action="" class="login-form">
+                    <div class="form-group">
+                        <label for="username">
+                            <i class="fas fa-user"></i> Username
+                        </label>
+                        <div class="input-wrapper">
+                            <input type="text" id="username" name="username" required autofocus placeholder="Enter your username">
+                            <i class="fas fa-user input-icon"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">
+                            <i class="fas fa-lock"></i> Password
+                        </label>
+                        <div class="input-wrapper">
+                            <input type="password" id="password" name="password" required placeholder="Enter your password">
+                            <i class="fas fa-lock input-icon"></i>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-login">
+                        <span>Sign In</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </form>
+            <?php endif; ?>
             
             <div style="margin-top: 24px; text-align: center; padding-top: 24px; border-top: 1px solid rgba(255, 255, 255, 0.2);">
                 <p style="color: rgba(255, 255, 255, 0.9); margin-bottom: 16px; font-size: 14px;">
