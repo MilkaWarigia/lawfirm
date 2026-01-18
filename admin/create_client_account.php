@@ -11,15 +11,65 @@ requireRole('admin');
 $message = "";
 $error = "";
 
+// Predefined security questions
+$security_questions = [
+    "What was the name of your first pet?",
+    "What city were you born in?",
+    "What was your mother's maiden name?",
+    "What was the name of your elementary school?",
+    "What was your childhood nickname?",
+    "What street did you grow up on?",
+    "What was the make of your first car?",
+    "What is your favorite movie?",
+    "What was the name of your first teacher?",
+    "What is your favorite food?",
+    "What was your favorite sport in high school?",
+    "What is the name of your best friend from childhood?",
+    "What was your favorite book as a child?",
+    "What is the name of the hospital where you were born?",
+    "What was your favorite vacation destination?"
+];
+
+// Password validation function
+function validatePassword($password) {
+    $errors = [];
+    if (strlen($password) < 8) {
+        $errors[] = "Password must be at least 8 characters long";
+    }
+    if (!preg_match('/[A-Z]/', $password)) {
+        $errors[] = "Password must contain at least one uppercase letter";
+    }
+    if (!preg_match('/[a-z]/', $password)) {
+        $errors[] = "Password must contain at least one lowercase letter";
+    }
+    if (!preg_match('/[0-9]/', $password)) {
+        $errors[] = "Password must contain at least one number";
+    }
+    if (!preg_match('/[^A-Za-z0-9]/', $password)) {
+        $errors[] = "Password must contain at least one special character";
+    }
+    return $errors;
+}
+
 // Handle account creation
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $client_id = $_POST['client_id'] ?? null;
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
+    $security_question = trim($_POST['security_question'] ?? '');
+    $security_answer = trim($_POST['security_answer'] ?? '');
     
-    if (empty($client_id) || empty($username) || empty($password)) {
+    if (empty($client_id) || empty($username) || empty($password) || empty($security_question) || empty($security_answer)) {
         $error = "Please fill in all fields";
     } else {
+        // Validate password strength
+        $password_errors = validatePassword($password);
+        if (!empty($password_errors)) {
+            $error = implode(". ", $password_errors);
+        }
+    }
+    
+    if (empty($error)) {
         try {
             // Check if username already exists
             $stmt = $conn->prepare("SELECT AuthId FROM CLIENT_AUTH WHERE Username = ?");
@@ -33,14 +83,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($stmt->fetch()) {
                     // Update existing account
                     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-                    $stmt = $conn->prepare("UPDATE CLIENT_AUTH SET Username = ?, Password = ?, IsActive = TRUE WHERE ClientId = ?");
-                    $stmt->execute([$username, $hashed_password, $client_id]);
+                    $stmt = $conn->prepare("UPDATE CLIENT_AUTH SET Username = ?, Password = ?, SecurityQuestion = ?, SecurityAnswer = ?, IsActive = TRUE WHERE ClientId = ?");
+                    $stmt->execute([$username, $hashed_password, $security_question, strtolower(trim($security_answer)), $client_id]);
                     $message = "Client account updated successfully";
                 } else {
                     // Create new account
                     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-                    $stmt = $conn->prepare("INSERT INTO CLIENT_AUTH (ClientId, Username, Password) VALUES (?, ?, ?)");
-                    $stmt->execute([$client_id, $username, $hashed_password]);
+                    $stmt = $conn->prepare("INSERT INTO CLIENT_AUTH (ClientId, Username, Password, SecurityQuestion, SecurityAnswer) VALUES (?, ?, ?, ?, ?)");
+                    $stmt->execute([$client_id, $username, $hashed_password, $security_question, strtolower(trim($security_answer))]);
                     $message = "Client portal account created successfully";
                 }
             }
@@ -100,8 +150,27 @@ include 'header.php';
         
         <div class="form-group">
             <label for="password">Password *</label>
-            <input type="password" id="password" name="password" required 
+            <input type="password" id="password" name="password" required minlength="8"
                    placeholder="Enter password">
+            <small style="color: var(--gray); font-size: 12px; display: block; margin-top: 5px;">
+                Password must be at least 8 characters and contain: uppercase, lowercase, number, and special character
+            </small>
+        </div>
+        
+        <div class="form-group">
+            <label for="security_question">Security Question *</label>
+            <select id="security_question" name="security_question" required>
+                <option value="">-- Select a Security Question --</option>
+                <?php foreach ($security_questions as $question): ?>
+                    <option value="<?php echo htmlspecialchars($question); ?>"><?php echo htmlspecialchars($question); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="security_answer">Security Answer *</label>
+            <input type="text" id="security_answer" name="security_answer" required 
+                   placeholder="Enter security answer">
         </div>
         
         <div class="form-actions">
