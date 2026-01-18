@@ -28,6 +28,11 @@ if (isset($_SESSION['client_id'])) {
 // Include database connection
 require_once 'config/database.php';
 
+// Clear login attempt if user clicks "Back to Login"
+if (isset($_GET['clear']) && $_GET['clear'] == '1') {
+    unset($_SESSION['login_attempt']);
+}
+
 $error = "";
 $show_security_question = false;
 $security_question = "";
@@ -153,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['security_answer'])) 
                     $user_name = $user['FirstName'] . ' ' . $user['LastName'];
                     $table_name = 'ADVOCATE';
                     $id_field = 'AdvtId';
-                    $security_question_field = $user['SecurityQuestion'] ?? '';
+                    $security_question_field = (!empty($user['SecurityQuestion']) && $user['SecurityQuestion'] !== null) ? trim($user['SecurityQuestion']) : '';
                 }
             } elseif ($role === 'receptionist') {
                 $stmt = $conn->prepare("SELECT RecId, FirstName, LastName, Password, IsLocked, SecurityQuestion FROM RECEPTIONIST WHERE Username = ?");
@@ -164,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['security_answer'])) 
                     $user_name = $user['FirstName'] . ' ' . $user['LastName'];
                     $table_name = 'RECEPTIONIST';
                     $id_field = 'RecId';
-                    $security_question_field = $user['SecurityQuestion'] ?? '';
+                    $security_question_field = (!empty($user['SecurityQuestion']) && $user['SecurityQuestion'] !== null) ? trim($user['SecurityQuestion']) : '';
                 }
             } elseif ($role === 'client') {
                 $stmt = $conn->prepare("SELECT ca.*, c.ClientId, c.FirstName, c.LastName, c.Email 
@@ -178,7 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['security_answer'])) 
                     $user_name = $user['FirstName'] . ' ' . $user['LastName'];
                     $table_name = 'CLIENT_AUTH';
                     $id_field = 'AuthId';
-                    $security_question_field = $user['SecurityQuestion'] ?? '';
+                    $security_question_field = (!empty($user['SecurityQuestion']) && $user['SecurityQuestion'] !== null) ? trim($user['SecurityQuestion']) : '';
                 }
             }
             
@@ -197,27 +202,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['security_answer'])) 
                         header("Location: admin/dashboard.php");
                         exit();
                     } elseif (empty($security_question_field)) {
-                        // No security question set - allow login but warn user
-                        if ($role === 'client') {
-                            $_SESSION['client_id'] = $user_id;
-                            $_SESSION['client_name'] = $user_name;
-                            $_SESSION['client_email'] = $user['Email'] ?? '';
-                            header("Location: client/dashboard.php");
-                        } else {
-                            $_SESSION['user_id'] = $user_id;
-                            $_SESSION['user_role'] = $role;
-                            $_SESSION['user_name'] = $user_name;
-                            $_SESSION['username'] = $username;
-                            
-                            if ($role === 'advocate') {
-                                header("Location: advocate/dashboard.php");
-                            } elseif ($role === 'receptionist') {
-                                header("Location: receptionist/dashboard.php");
-                            }
-                        }
-                        exit();
+                        // All non-admin users (client, advocate, receptionist) must have security question set
+                        $error = "Your account does not have a security question set. Please contact the administrator to set up your security question.";
                     } else {
-                        // Password correct, show security question
+                        // Password correct, show security question (required for all non-admin users)
+                        // Store login attempt in session and redirect to show security question form
                         $_SESSION['login_attempt'] = [
                             'username' => $username,
                             'role' => $role,
@@ -229,8 +218,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['security_answer'])) 
                             'email' => $user['Email'] ?? '',
                             'client_id' => ($role === 'client' ? $user['ClientId'] : null)
                         ];
-                        $show_security_question = true;
-                        $security_question = $security_question_field;
+                        // Redirect to prevent form resubmission and show security question
+                        header("Location: login.php?security_question=1");
+                        exit();
                     }
                 } else {
                     if ($role === 'client') {
@@ -253,9 +243,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['security_answer'])) 
 }
 
 // Check if we should show security question from session
-if (isset($_SESSION['login_attempt']) && !$show_security_question) {
+if (isset($_SESSION['login_attempt'])) {
     $show_security_question = true;
     $security_question = $_SESSION['login_attempt']['security_question'] ?? '';
+    // If security question is empty but we have a login attempt, show error
+    if (empty($security_question)) {
+        $error = "Your account does not have a security question set. Please contact the administrator to set up your security question.";
+        unset($_SESSION['login_attempt']);
+        $show_security_question = false;
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -639,7 +635,7 @@ if (isset($_SESSION['login_attempt']) && !$show_security_question) {
                     </button>
                     
                     <div style="margin-top: 15px; text-align: center;">
-                        <a href="login.php" class="btn btn-secondary btn-sm" style="width: 100%;">
+                        <a href="login.php?clear=1" class="btn btn-secondary btn-sm" style="width: 100%;">
                             <i class="fas fa-arrow-left"></i> Back to Login
                         </a>
                     </div>
