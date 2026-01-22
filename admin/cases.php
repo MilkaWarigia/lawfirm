@@ -261,6 +261,19 @@ include 'header.php';
     </form>
     
     <?php if ($edit_case): ?>
+        <!-- Case Progress Section -->
+        <div class="card mt-20" style="margin-top: 30px;">
+            <h3><i class="fas fa-tasks"></i> Case Progress</h3>
+            <?php if (!empty($edit_case['Progress'])): ?>
+                <div style="padding: 15px; background: #f8f9fa; border-radius: 4px; white-space: pre-wrap; line-height: 1.6; margin-bottom: 15px;"><?php echo nl2br(htmlspecialchars($edit_case['Progress'])); ?></div>
+                <div style="color: var(--gray); font-size: 14px;">
+                    <i class="fas fa-info-circle"></i> This progress is updated by the assigned advocate(s)
+                </div>
+            <?php else: ?>
+                <p style="color: var(--gray); text-align: center; padding: 20px;">No progress updates available yet. The assigned advocate will update this section.</p>
+            <?php endif; ?>
+        </div>
+        
         <!-- Advocate Assignment Section -->
         <div class="card mt-20" style="margin-top: 30px;">
             <h3><i class="fas fa-user-tie"></i> Assign Advocates</h3>

@@ -135,6 +135,18 @@ try {
         </div>
         
         <div class="card mt-20">
+            <h3>Case Progress</h3>
+            <?php if (!empty($case['Progress'])): ?>
+                <div style="padding: 15px; background: #f8f9fa; border-radius: 4px; white-space: pre-wrap; line-height: 1.6;"><?php echo nl2br(htmlspecialchars($case['Progress'])); ?></div>
+                <div style="margin-top: 10px; color: var(--gray); font-size: 14px;">
+                    <i class="fas fa-info-circle"></i> Updated by your assigned advocate
+                </div>
+            <?php else: ?>
+                <p class="empty-state">No progress updates available yet. Your advocate will update this section as the case progresses.</p>
+            <?php endif; ?>
+        </div>
+        
+        <div class="card mt-20">
             <h3>Upcoming Events</h3>
             <?php if (count($events) > 0): ?>
                 <div class="table-container">
